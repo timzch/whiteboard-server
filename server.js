@@ -31,6 +31,10 @@ function saveCards(){
 
 loadCards();
 
+app.get('/', (req, res) => {
+  res.send('Whiteboard läuft!');
+});
+
 app.get("/cards", (req, res) => res.json(cards));
 
 app.post("/cards", (req, res) => {
