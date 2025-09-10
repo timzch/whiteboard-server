@@ -53,15 +53,18 @@ app.post("/cards", (req, res) => {
   res.json(card);
 });
 
-app.put("/cards/:id", (req, res) => {
+// Neue Route, um UML Daten einer Karte zu speichern
+app.put("/cards/:id/uml", (req, res) => {
   const id = parseInt(req.params.id);
   const idx = cards.findIndex(c => c.id === id);
   if (idx >= 0) {
-    cards[idx] = { ...cards[idx], ...req.body };
+    cards[idx].uml = req.body; // enthält { type, nodes, edges }
     saveCards();
-    io.emit("card_updated", cards[idx]); // Broadcast an alle Clients
-    res.json(cards[idx]);
-  } else res.status(404).end();
+    io.emit("uml_updated", { cardId: id, uml: cards[idx].uml });
+    res.json(cards[idx].uml);
+  } else {
+    res.status(404).end();
+  }
 });
 
 // PUT /cards/:id/uml
@@ -145,3 +148,5 @@ io.on("connection", (socket) => {
     }
   });
 });
+
+
