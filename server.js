@@ -64,6 +64,20 @@ app.put("/cards/:id", (req, res) => {
   } else res.status(404).end();
 });
 
+// PUT /cards/:id/uml
+app.put("/cards/:id/uml", (req, res) => {
+  const id = parseInt(req.params.id);
+  const idx = cards.findIndex(c => c.id === id);
+  if (idx >= 0) {
+    cards[idx].uml = req.body; // erwartet JSON { type, nodes, edges }
+    saveCards();
+    io.emit("uml_updated", { cardId: id, umlData: cards[idx].uml });
+    res.json(cards[idx].uml);
+  } else {
+    res.status(404).json({ error: "Karte nicht gefunden" });
+  }
+});
+
 app.delete("/cards/:id", (req, res) => {
   const id = parseInt(req.params.id);
   cards = cards.filter(c => c.id !== id);
@@ -110,4 +124,24 @@ io.on("connection", (socket) => {
 // Server starten
 server.listen(PORT, HOST, () => {
   console.log(`Server listening on http://${HOST}:${PORT}`);
+});
+
+// ------------------- UML Sub-Board -------------------
+io.on("connection", (socket) => {
+  console.log("Client connected:", socket.id);
+
+  // Sende Initialdaten
+  socket.emit("init", cards);
+
+  // Andere Events (wie schon vorhanden) ...
+  
+  // Event: UML Diagramm aktualisiert
+  socket.on("uml_updated", ({ cardId, umlData }) => {
+    const idx = cards.findIndex(c => c.id === cardId);
+    if (idx >= 0) {
+      cards[idx].uml = umlData;   // Speichert das UML-Subboard in der Karte
+      saveCards();                // JSON-Datei aktualisieren
+      io.emit("uml_updated", { cardId, umlData }); // Broadcast an alle Clients
+    }
+  });
 });
