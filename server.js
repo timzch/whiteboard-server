@@ -10,7 +10,7 @@ const HOST = "0.0.0.0";
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: { origin: "*" } // Erlaubt Verbindungen von allen Clients
 });
 
 app.use(express.json());
@@ -18,30 +18,38 @@ app.use(express.json());
 const dataFile = path.join(__dirname, "cards.json");
 let cards = [];
 
-function loadCards(){
+// Laden der Karten beim Start
+function loadCards() {
   if (fs.existsSync(dataFile)) {
-    try { cards = JSON.parse(fs.readFileSync(dataFile,"utf8")); } catch(e){ cards = []; }
+    try { cards = JSON.parse(fs.readFileSync(dataFile, "utf8")); } 
+    catch (e) { cards = []; }
   } else {
     cards = [];
   }
 }
-function saveCards(){
+
+// Speichern der Karten + optionales Backup
+function saveCards() {
   fs.writeFileSync(dataFile, JSON.stringify(cards, null, 2));
+  // Backup optional: jede Änderung in data-backup.json speichern
+  fs.writeFileSync(path.join(__dirname, "cards-backup.json"), JSON.stringify(cards, null, 2));
 }
 
 loadCards();
 
+// Test-Route
 app.get('/', (req, res) => {
   res.send('Whiteboard läuft!');
 });
 
+// REST-Endpoints
 app.get("/cards", (req, res) => res.json(cards));
 
 app.post("/cards", (req, res) => {
   const card = { id: Date.now(), ...req.body };
   cards.push(card);
   saveCards();
-  io.emit("card_added", card);
+  io.emit("card_added", card); // Broadcast an alle Clients
   res.json(card);
 });
 
@@ -51,7 +59,7 @@ app.put("/cards/:id", (req, res) => {
   if (idx >= 0) {
     cards[idx] = { ...cards[idx], ...req.body };
     saveCards();
-    io.emit("card_updated", cards[idx]);
+    io.emit("card_updated", cards[idx]); // Broadcast an alle Clients
     res.json(cards[idx]);
   } else res.status(404).end();
 });
@@ -60,15 +68,46 @@ app.delete("/cards/:id", (req, res) => {
   const id = parseInt(req.params.id);
   cards = cards.filter(c => c.id !== id);
   saveCards();
-  io.emit("card_deleted", id);
+  io.emit("card_deleted", id); // Broadcast an alle Clients
   res.json({ success: true });
 });
 
+// Socket.IO Verbindung
 io.on("connection", (socket) => {
-  console.log("Client connected");
+  console.log("Client connected:", socket.id);
+
+  // Initialisierung beim Client
   socket.emit("init", cards);
+
+  // Optional: neue Karten direkt vom Socket empfangen
+  socket.on("add_card", (cardData) => {
+    const card = { id: Date.now(), ...cardData };
+    cards.push(card);
+    saveCards();
+    io.emit("card_added", card);
+  });
+
+  socket.on("update_card", ({ id, updates }) => {
+    const idx = cards.findIndex(c => c.id === id);
+    if (idx >= 0) {
+      cards[idx] = { ...cards[idx], ...updates };
+      saveCards();
+      io.emit("card_updated", cards[idx]);
+    }
+  });
+
+  socket.on("delete_card", (id) => {
+    cards = cards.filter(c => c.id !== id);
+    saveCards();
+    io.emit("card_deleted", id);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id);
+  });
 });
 
+// Server starten
 server.listen(PORT, HOST, () => {
   console.log(`Server listening on http://${HOST}:${PORT}`);
 });
